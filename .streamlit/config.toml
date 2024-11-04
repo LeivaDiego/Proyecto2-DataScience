@@ -1,0 +1,6 @@
+[theme]
+primaryColor = "#2E4A7D"        # Azul oscuro para encabezados y botones principales
+backgroundColor = "#F8F8F8"     # Fondo blanco o gris muy claro
+secondaryBackgroundColor = "#F8F8F8"  # Fondo secundario igual que el fondo principal
+textColor = "#616161"           # Gris oscuro para el texto principal
+font = "sans serif"             # Cambia la fuente si deseas
