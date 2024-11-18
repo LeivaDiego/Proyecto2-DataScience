@@ -13,11 +13,15 @@ from torch.utils.data import DataLoader
 from torchvision.models import efficientnet_v2_s
 from torchvision.models.feature_extraction import create_feature_extractor
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 from PIL import Image
 
+
 # Configuración de dispositivo
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+DEVICE = 'mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu')
 BATCH_SIZE = 1  # Batch pequeño para procesamiento de un solo paciente
+
+print(DEVICE)
 
 # Configuración de modelos y paths
 WEIGHTS = T.Compose([T.ToTensor(), T.Resize((224, 224))])  # Reemplaza con WEIGHTS.transforms() si es necesario
@@ -91,6 +95,30 @@ class EffnetModel(torch.nn.Module):
     def predict(self, x):
         frac, vert = self.forward(x)
         return torch.sigmoid(frac), torch.sigmoid(vert)
+    
+
+def create_probability_plot(data):
+    fig, ax = plt.subplots(figsize=(8, 5))
+    regions = data["index"]
+    probabilities = data[0]
+    complement = 1 - probabilities
+
+    bar_width = 0.5
+    x_pos = range(len(regions))
+
+    # Create red and green sections
+    ax.bar(x_pos, probabilities, color="red", label="Probabilidad de Fractua", width=bar_width)
+    ax.bar(x_pos, complement, bottom=probabilities, color="green", label="Probabilidad de Estar Sano", width=bar_width)
+
+    # Configure plot
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(regions, rotation=45, ha="right")  # Rotate labels for better readability
+    ax.set_ylabel("Value")
+    ax.set_title("Probabilities and Complements")
+    ax.legend(loc="upper right")
+
+    return fig
+
 
 # Predicción usando modelos EfficientNet
 def predict_effnet(models: List[EffnetModel], ds) -> np.ndarray:
@@ -128,7 +156,7 @@ def predict_single_patient(models: List[EffnetModel], patient_path: str, thresho
     pred_final = patient_prediction(df_patient_pred)
 
     # Aplicar umbral
-    pred_final[columns_to_transform] = pred_final[columns_to_transform].apply(lambda x: 1 if x > threshold else 0)
+    # pred_final[columns_to_transform] = pred_final[columns_to_transform].apply(lambda x: 1 if x > threshold else 0)
     return pred_final
 
 # Función para crear un GIF a partir de imágenes DICOM
@@ -187,21 +215,18 @@ with st.spinner("Cargando..."):
         progress_bar.progress((idx + 1) / len(MODEL_NAMES))  # Actualiza la barra de progreso
 
 # Definir el directorio del paciente
-patient_path = st.text_input("Introduce la ruta de las imágenes DICOM del paciente:", 'data/train_images/1.2.826.0.1.3680043.10001')
+patient_path = st.text_input("Introduce la ruta de las imágenes DICOM del paciente:", 'data/train_images/1.2.826.0.1.3680043.14')
 
 # Agregar la barra deslizante para el umbral
-threshold = st.slider("Selecciona el umbral para la predicción:", 0.0, 1.0, 0.5)
+# threshold = st.slider("Selecciona el umbral para la predicción:", 0.0, 1.0, 0.5)
 # Explicación sobre el umbral de predicción
 st.markdown("""    
-    El umbral de predicción es un valor entre 0 y 1 que define cuán confiable debe ser una predicción para que se considere positiva. 
-    Si una predicción supera este umbral, se clasificará como una predicción positiva (por ejemplo, una fractura detectada). 
-    De lo contrario, se clasificará como negativa (sin fractura). 
-
-    Este parámetro te permite ajustar la sensibilidad de la predicción. Un umbral bajo puede resultar en más predicciones positivas, 
-    mientras que un umbral alto puede hacer que solo las predicciones muy confiables sean consideradas positivas.
+    A continuación se desplegará una gráfica que representa las probabilidades de tener una vértebra rota. Adicionalmente se muestra una visualización 
+    del caso y las probabilidades específicas de fractura para cada vértebra.
 """)
 
 # Botón de predicción
+# Generate plot and display in Streamlit
 if st.button("Predecir"):
     if patient_path:
         if os.path.exists(patient_path):
@@ -211,13 +236,19 @@ if st.button("Predecir"):
                 st.write("### Predicciones Finales del Paciente:")
                 st.write(pred_result)
 
-                # Crear GIF de las imágenes DICOM
-                gif_path = create_gif_from_dicom(patient_path)
+                # Prepare data for plotting
+                pred_result = pred_result.T.reset_index()
+                # pred_result.columns = ["Region", "Probability"]
 
-                # Mostrar GIF repetido en Streamlit
+                # Create and display the new plot
+                fig = create_probability_plot(pred_result)
+                st.pyplot(fig)
+
+                # Create GIF of the DICOM images
+                gif_path = create_gif_from_dicom(patient_path)
                 st.image(gif_path, caption="Animación de las imágenes DICOM", use_container_width=True)
 
             except Exception as e:
-                st.error(f"Ocurrió un error: {e}")
+                st.error(f"Ocurrió un error: {e}")                
         else:
             st.error("La ruta del paciente no existe.")
